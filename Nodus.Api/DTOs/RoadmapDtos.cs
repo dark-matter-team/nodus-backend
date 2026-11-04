@@ -14,6 +14,8 @@ public record RoadmapSummaryDto(
     Guid Id,
     string Title,
     RoadmapStatus Status,
+    KnowledgeLevel KnowledgeLevel,
+    string TimeCommitment,
     int TotalNodesCount,
     int CompletedNodesCount,
     bool IsPublic

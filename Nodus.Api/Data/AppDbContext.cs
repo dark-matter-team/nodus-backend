@@ -20,6 +20,10 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             .HasIndex(u => u.Email)
             .IsUnique();
 
+        modelBuilder.Entity<User>()
+            .HasIndex(u => u.Nickname)
+            .IsUnique();
+
         // 2. Правило из Раздела 5.4 спецификации:
         // Если автор удалил оригинальное публичное дерево, у склонированных копий ClonedFromId просто становится NULL
         modelBuilder.Entity<Roadmap>()

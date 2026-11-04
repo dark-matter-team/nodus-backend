@@ -45,7 +45,7 @@ public class RoadmapsController : ControllerBase
     {
         var list = new List<RoadmapSummaryDto>
         {
-            new(Guid.NewGuid(), "Python для аналізу даних", RoadmapStatus.Active, 5, 1, false)
+            new(Guid.NewGuid(), "Python для аналізу даних", RoadmapStatus.Active, KnowledgeLevel.Beginner, "5 hrs/week", 5, 1, false)
         };
         return Ok(list);
     }
