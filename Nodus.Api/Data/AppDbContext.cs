@@ -15,7 +15,6 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     {
         base.OnModelCreating(modelBuilder);
 
-        // 1. Почта Email у пользователя должна быть уникальной
         modelBuilder.Entity<User>()
             .HasIndex(u => u.Email)
             .IsUnique();
@@ -24,15 +23,12 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             .HasIndex(u => u.Nickname)
             .IsUnique();
 
-        // 2. Правило из Раздела 5.4 спецификации:
-        // Если автор удалил оригинальное публичное дерево, у склонированных копий ClonedFromId просто становится NULL
         modelBuilder.Entity<Roadmap>()
             .HasOne<Roadmap>()
             .WithMany()
             .HasForeignKey(r => r.ClonedFromId)
             .OnDelete(DeleteBehavior.SetNull);
 
-        // 3. Связь узла с родительским узлом внутри одной таблицы RoadmapNodes
         modelBuilder.Entity<RoadmapNode>()
             .HasOne(n => n.ParentNode)
             .WithMany()
