@@ -22,11 +22,12 @@ public class AuthService(AppDbContext dbContext, IOptions<JwtSettings> jwtOption
 
         ValidateEmail(email);
         ValidatePassword(password);
-        if (nickname.Length is < 2 or > 50)
-            throw new AuthException("Нікнейм має містити від 2 до 50 символів");
+        if (nickname.Length is < 2 or > 50 || nickname.Contains('@'))
+    throw new AuthException("Нікнейм має містити від 2 до 50 символів і не містити '@'");
 
-        if (await dbContext.Users.AnyAsync(u => u.Email == email))
-            throw new AuthException("Користувач з таким email вже існує");
+var normalizedNickname = nickname.ToLowerInvariant();
+if (await dbContext.Users.AnyAsync(u => u.Email == email || u.Nickname.ToLower() == normalizedNickname))
+    throw new AuthException("Користувач з таким email або нікнеймом вже існує");
 
         var user = new User
         {
@@ -50,16 +51,30 @@ public class AuthService(AppDbContext dbContext, IOptions<JwtSettings> jwtOption
         return BuildAuthResponse(user);
     }
 
-    public async Task<AuthResponse> LoginAsync(string email, string password)
+    public async Task<AuthResponse> LoginAsync(string? email, string? password, string? nickname)
     {
-        email = NormalizeEmail(email);
+        if (string.IsNullOrWhiteSpace(email) && string.IsNullOrWhiteSpace(nickname))
+        {
+            throw new AuthException("Введіть email або нікнейм", StatusCodes.Status400BadRequest);
+        }
 
-        var user = await dbContext.Users.FirstOrDefaultAsync(u => u.Email == email);
+        User? user = null;
+
+        if (!string.IsNullOrWhiteSpace(email))
+        {
+            var normalizedEmail = NormalizeEmail(email);
+            user = await dbContext.Users.FirstOrDefaultAsync(u => u.Email == normalizedEmail);
+        }
+        else if (!string.IsNullOrWhiteSpace(nickname))
+        {
+            var normalizedNickname = nickname.Trim().ToLowerInvariant();
+            user = await dbContext.Users.FirstOrDefaultAsync(u => u.Nickname.ToLower() == normalizedNickname);
+        }
 
         if (user?.PasswordHash is null || string.IsNullOrEmpty(password)
             || !BCrypt.Net.BCrypt.Verify(password, user.PasswordHash))
         {
-            throw new AuthException("Невірний email або пароль", StatusCodes.Status401Unauthorized);
+            throw new AuthException("Невірний email/нікнейм або пароль", StatusCodes.Status401Unauthorized);
         }
 
         return BuildAuthResponse(user);

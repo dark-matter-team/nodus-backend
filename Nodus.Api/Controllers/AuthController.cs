@@ -34,7 +34,7 @@ public class AuthController(AuthService authService) : ControllerBase
     {
         try
         {
-            return Ok(await authService.LoginAsync(request.Email, request.Password));
+            return Ok(await authService.LoginAsync(request.Email, request.Password, request.Nickname));
         }
         catch (AuthException ex)
         {
