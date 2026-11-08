@@ -78,6 +78,34 @@ public class AuthController(AuthService authService) : ControllerBase
         }
     }
 
+    [HttpPost("/api/auth/forgot-password")]
+    public async Task<IActionResult> ForgotPassword([FromBody] ForgotPasswordRequest request)
+    {
+        try
+        {
+            await authService.ForgotPasswordAsync(request.Email);
+            return Ok(new { message = "Код відновлення надіслано на вашу пошту" });
+        }
+        catch (AuthException ex)
+        {
+            return StatusCode(ex.StatusCode, new { error = ex.Message });
+        }
+    }
+
+    [HttpPost("/api/auth/reset-password")]
+    public async Task<IActionResult> ResetPassword([FromBody] ResetPasswordRequest request)
+    {
+        try
+        {
+            await authService.ResetPasswordAsync(request.Email, request.Code, request.NewPassword);
+            return Ok(new { message = "Пароль успішно змінено" });
+        }
+        catch (AuthException ex)
+        {
+            return StatusCode(ex.StatusCode, new { error = ex.Message });
+        }
+    }
+
     private Guid GetUserId()
     {
         var idClaim = User.FindFirstValue(ClaimTypes.NameIdentifier);

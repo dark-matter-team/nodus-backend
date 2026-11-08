@@ -10,4 +10,6 @@ public class User
     public string? AvatarUrl { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public List<Roadmap> Roadmaps { get; set; } = new();
+    public string? PasswordResetCode { get; set; }
+    public DateTime? PasswordResetCodeExpiresAt { get; set; }
 }
