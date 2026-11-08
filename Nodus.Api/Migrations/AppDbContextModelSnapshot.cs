@@ -182,6 +182,9 @@ namespace Nodus.Api.Migrations
                     b.HasIndex("Email")
                         .IsUnique();
 
+                    b.HasIndex("Nickname")
+                        .IsUnique();
+
                     b.ToTable("Users");
                 });
 
