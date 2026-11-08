@@ -1,6 +1,8 @@
 using Microsoft.AspNetCore.Mvc;
 using Nodus.Api.DTOs;
 using Nodus.Api.Services;
+using System.Security.Claims;
+using Microsoft.AspNetCore.Authorization;
 
 namespace Nodus.Api.Controllers;
 
@@ -42,15 +44,41 @@ public class AuthController(AuthService authService) : ControllerBase
         }
     }
 
+    [Authorize]
     [HttpGet("/api/users/me")]
-    public ActionResult<UserProfileDto> GetCurrentUser()
+    public async Task<ActionResult<UserProfileDto>> GetCurrentUser()
     {
-        return Ok(CreateMockUser());
+        try
+        {
+            return Ok(await authService.GetUserProfileAsync(GetUserId()));
+        }
+        catch (AuthException ex)
+        {
+            return StatusCode(ex.StatusCode, new { error = ex.Message });
+        }
     }
 
+    [Authorize]
     [HttpDelete("/api/users/me")]
-    public IActionResult DeleteAccount()
+    public async Task<IActionResult> DeleteAccount()
     {
-        return NoContent();
+        try
+        {
+            var deleted = await authService.DeleteUserAccountAsync(GetUserId());
+            return deleted ? NoContent() : NotFound(new { error = "Користувача не знайдено" });
+        }
+        catch (AuthException ex)
+        {
+            return StatusCode(ex.StatusCode, new { error = ex.Message });
+        }
+    }
+
+    private Guid GetUserId()
+    {
+        var idClaim = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (!Guid.TryParse(idClaim, out var userId))
+            throw new AuthException("Недійсний токен", StatusCodes.Status401Unauthorized);
+
+        return userId;
     }
 }
