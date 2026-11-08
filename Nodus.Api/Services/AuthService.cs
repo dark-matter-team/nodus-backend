@@ -9,14 +9,15 @@ using Nodus.Api.Data;
 using Nodus.Api.DTOs;
 using Nodus.Api.Entities;
 using Google.Apis.Auth;
+using System.Net;
 
 namespace Nodus.Api.Services;
 
-public class AuthService(AppDbContext dbContext, IOptions<JwtSettings> jwtOptions, IOptions<GoogleSettings> googleOptions)
+public class AuthService(AppDbContext dbContext, IOptions<JwtSettings> jwtOptions, IOptions<GoogleSettings> googleOptions, IOptions<SmtpSettings> smtpOptions)
 {
     private readonly JwtSettings _jwt = jwtOptions.Value;
-
     private readonly GoogleSettings _google = googleOptions.Value;
+    private readonly SmtpSettings _smtp = smtpOptions.Value;
     public async Task<AuthResponse> RegisterAsync(string email, string password, string nickname)
     {
         email = NormalizeEmail(email);
@@ -135,6 +136,43 @@ public class AuthService(AppDbContext dbContext, IOptions<JwtSettings> jwtOption
         return BuildAuthResponse(user);
     }
 
+    public async Task ForgotPasswordAsync(string email)
+    {
+        email = NormalizeEmail(email);
+        ValidateEmail(email);
+
+        var user = await dbContext.Users.FirstOrDefaultAsync(u => u.Email == email)
+                   ?? throw new AuthException("Користувача з таким email не знайдено", StatusCodes.Status404NotFound);
+
+        var code = Random.Shared.Next(100000, 1000000).ToString();
+        user.PasswordResetCode = code;
+        user.PasswordResetCodeExpiresAt = DateTime.UtcNow.AddMinutes(15);
+
+        await dbContext.SaveChangesAsync();
+        await SendResetEmailAsync(user.Email, code);
+    }
+
+    public async Task ResetPasswordAsync(string email, string code, string newPassword)
+    {
+        email = NormalizeEmail(email);
+        ValidatePassword(newPassword);
+
+        var user = await dbContext.Users.FirstOrDefaultAsync(u => u.Email == email);
+
+        if (user is null || string.IsNullOrWhiteSpace(code) ||
+            user.PasswordResetCode != code.Trim() ||
+            user.PasswordResetCodeExpiresAt < DateTime.UtcNow)
+        {
+            throw new AuthException("Недійсний або прострочений код відновлення", StatusCodes.Status400BadRequest);
+        }
+
+        user.PasswordResetCode = null;
+        user.PasswordResetCodeExpiresAt = null;
+        user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(newPassword);
+
+        await dbContext.SaveChangesAsync();
+    }
+
     public async Task<UserProfileDto> GetUserProfileAsync(Guid userId)
     {
         var user = await dbContext.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == userId)
@@ -201,5 +239,29 @@ public class AuthService(AppDbContext dbContext, IOptions<JwtSettings> jwtOption
             throw new AuthException("Пароль має містити щонайменше 8 символів");
         if (password.Length > 72)
             throw new AuthException("Пароль не може бути довшим за 72 символи");
+    }
+
+    private async Task SendResetEmailAsync(string toEmail, string code)
+    {
+        using var client = new SmtpClient(_smtp.Host, _smtp.Port)
+        {
+            Credentials = new NetworkCredential(_smtp.Username, _smtp.Password),
+            EnableSsl = true
+        };
+
+        using var message = new MailMessage(_smtp.FromEmail, toEmail)
+        {
+            Subject = "Nodus — Код відновлення пароля",
+            Body = $"Ваш код для скидання пароля: {code}\nКод дійсний протягом 15 хвилин."
+        };
+
+        try
+        {
+            await client.SendMailAsync(message);
+        }
+        catch (Exception)
+        {
+            throw new AuthException("Не вдалося надіслати лист із кодом відновлення", StatusCodes.Status500InternalServerError);
+        }
     }
 }
