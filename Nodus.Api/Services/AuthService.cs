@@ -8,13 +8,15 @@ using Microsoft.IdentityModel.Tokens;
 using Nodus.Api.Data;
 using Nodus.Api.DTOs;
 using Nodus.Api.Entities;
+using Google.Apis.Auth;
 
 namespace Nodus.Api.Services;
 
-public class AuthService(AppDbContext dbContext, IOptions<JwtSettings> jwtOptions)
+public class AuthService(AppDbContext dbContext, IOptions<JwtSettings> jwtOptions, IOptions<GoogleSettings> googleOptions)
 {
     private readonly JwtSettings _jwt = jwtOptions.Value;
 
+    private readonly GoogleSettings _google = googleOptions.Value;
     public async Task<AuthResponse> RegisterAsync(string email, string password, string nickname)
     {
         email = NormalizeEmail(email);
@@ -23,11 +25,11 @@ public class AuthService(AppDbContext dbContext, IOptions<JwtSettings> jwtOption
         ValidateEmail(email);
         ValidatePassword(password);
         if (nickname.Length is < 2 or > 50 || nickname.Contains('@'))
-    throw new AuthException("Нікнейм має містити від 2 до 50 символів і не містити '@'");
+           throw new AuthException("Нікнейм має містити від 2 до 50 символів і не містити '@'");
 
-var normalizedNickname = nickname.ToLowerInvariant();
-if (await dbContext.Users.AnyAsync(u => u.Email == email || u.Nickname.ToLower() == normalizedNickname))
-    throw new AuthException("Користувач з таким email або нікнеймом вже існує");
+        var normalizedNickname = nickname.ToLowerInvariant();
+        if (await dbContext.Users.AnyAsync(u => u.Email == email || u.Nickname.ToLower() == normalizedNickname))
+            throw new AuthException("Користувач з таким email або нікнеймом вже існує");
 
         var user = new User
         {
@@ -70,13 +72,66 @@ if (await dbContext.Users.AnyAsync(u => u.Email == email || u.Nickname.ToLower()
             var normalizedNickname = nickname.Trim().ToLowerInvariant();
             user = await dbContext.Users.FirstOrDefaultAsync(u => u.Nickname.ToLower() == normalizedNickname);
         }
-
-        if (user?.PasswordHash is null || string.IsNullOrEmpty(password)
-            || !BCrypt.Net.BCrypt.Verify(password, user.PasswordHash))
+        if (user is not null && user.PasswordHash is null)  
+        {
+            throw new AuthException("Цей акаунт створено через Google. Увійдіть за допомогою Google", StatusCodes.Status401Unauthorized);
+        }
+        else if (user is null || string.IsNullOrEmpty(password) || !BCrypt.Net.BCrypt.Verify(password, user.PasswordHash))
         {
             throw new AuthException("Невірний email/нікнейм або пароль", StatusCodes.Status401Unauthorized);
         }
 
+        return BuildAuthResponse(user);
+    }
+    public async Task<AuthResponse> GoogleLoginAsync(string IdToken)
+    {
+        if (string.IsNullOrWhiteSpace(IdToken))
+        {
+            throw new AuthException("Токен авторизації Google є обов'язковим", StatusCodes.Status400BadRequest);
+        }
+        var settings = new GoogleJsonWebSignature.ValidationSettings
+        {
+            Audience = [_google.ClientId]
+        };
+        GoogleJsonWebSignature.Payload payload;
+        try
+        {
+            payload = await GoogleJsonWebSignature.ValidateAsync(IdToken, settings);
+        }
+        catch (InvalidJwtException)
+        {
+            throw new AuthException("Недійсний Google токен", StatusCodes.Status401Unauthorized);
+        }
+        if (!payload.EmailVerified || string.IsNullOrEmpty(payload.Email))
+        {
+            throw new AuthException("Email облікового запису Google не підтверджено або відсутній", StatusCodes.Status401Unauthorized);
+        }
+        var email = NormalizeEmail(payload.Email);
+        var user = await dbContext.Users.FirstOrDefaultAsync(u => u.Email == email);
+
+        if(user is null)
+        {
+            user = new User
+            {
+                Id = Guid.NewGuid(),
+                Email = email,
+                Nickname = payload.Name ?? email.Split('@')[0],
+                PasswordHash = null,
+                AvatarUrl = payload.Picture,
+                CreatedAt = DateTime.UtcNow,
+                GoogleId = payload.Subject
+            };
+            
+            dbContext.Users.Add(user);
+            try
+            {
+                await dbContext.SaveChangesAsync();
+            }
+            catch (DbUpdateException)
+            {
+                throw new AuthException("Не вдалося створити користувача. Можливо, такий нікнейм або email вже зайнято");
+            }
+        }
         return BuildAuthResponse(user);
     }
 
