@@ -99,6 +99,8 @@ namespace Nodus.Api.Migrations
 
                     b.HasIndex("ClonedFromId");
 
+                    b.HasIndex("IsPublic");
+
                     b.HasIndex("OwnerId");
 
                     b.ToTable("Roadmaps");

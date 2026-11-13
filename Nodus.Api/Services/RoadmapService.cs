@@ -142,4 +142,57 @@ public class RoadmapService(AppDbContext dbContext)
         await dbContext.SaveChangesAsync();
         return true;
     }
+
+    public async Task<ChecklistItemDto?> ToggleChecklistItemAsync(Guid itemId, Guid userId)
+    {
+        var item = await dbContext.NodeChecklistItems
+            .Include(i => i.Node)
+                .ThenInclude(n => n.Roadmap)
+            .FirstOrDefaultAsync(i => i.Id == itemId && i.Node.Roadmap.OwnerId == userId);
+
+        if (item is null) return null;
+
+        item.IsCompleted = !item.IsCompleted;
+        await dbContext.SaveChangesAsync();
+
+        return new ChecklistItemDto(item.Id, item.Title, item.IsCompleted, item.SortOrder);
+    }
+
+    public async Task<(CompleteNodeResponse? Response, string? Error)> CompleteNodeAsync(Guid nodeId, Guid userId)
+    {
+        var node = await dbContext.RoadmapNodes
+            .Include(n => n.ChecklistItems)
+            .Include(n => n.Roadmap)
+                .ThenInclude(r => r.Nodes)
+            .FirstOrDefaultAsync(n => n.Id == nodeId && n.Roadmap.OwnerId == userId);
+
+        if (node is null)
+            return (null, "Вузол не знайдено");
+
+        if (node.Status == NodeStatus.Locked)
+            return (null, "Неможливо завершити заблокований вузол. Спочатку завершіть попередній крок");
+
+        if (node.ChecklistItems.Any(i => !i.IsCompleted))
+            return (null, "Спочатку виконайте всі мікро-кроки в чек-листі цього вузла");
+
+        node.Status = NodeStatus.Completed;
+        node.CompletedAt = DateTime.UtcNow;
+
+        var unlockedNodeIds = new List<Guid>();
+        foreach (var child in node.Roadmap.Nodes.Where(n => n.ParentNodeId == nodeId && n.Status == NodeStatus.Locked))
+        {
+            child.Status = NodeStatus.Available;
+            unlockedNodeIds.Add(child.Id);
+        }
+
+        var isRoadmapCompleted = node.Roadmap.Nodes.All(n => n.Status == NodeStatus.Completed);
+        if (isRoadmapCompleted)
+        {
+            node.Roadmap.Status = RoadmapStatus.Completed;
+        }
+
+        await dbContext.SaveChangesAsync();
+
+        return (new CompleteNodeResponse(nodeId, unlockedNodeIds, isRoadmapCompleted), null);
+    }
 }

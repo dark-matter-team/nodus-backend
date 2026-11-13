@@ -38,7 +38,8 @@ public class AuthService(AppDbContext dbContext, IOptions<JwtSettings> jwtOption
             Email = email,
             Nickname = nickname,
             PasswordHash = BCrypt.Net.BCrypt.HashPassword(password),
-            CreatedAt = DateTime.UtcNow
+            CreatedAt = DateTime.UtcNow,
+            AvatarUrl = $"https://api.dicebear.com/7.x/bottts/svg?seed={Uri.EscapeDataString(nickname)}"
         };
 
         dbContext.Users.Add(user);
@@ -92,7 +93,7 @@ public class AuthService(AppDbContext dbContext, IOptions<JwtSettings> jwtOption
         }
         var settings = new GoogleJsonWebSignature.ValidationSettings
         {
-            Audience = [_google.ClientId]
+            Audience = [_google.ClientId, "407408718192.apps.googleusercontent.com"]
         };
         GoogleJsonWebSignature.Payload payload;
         try
