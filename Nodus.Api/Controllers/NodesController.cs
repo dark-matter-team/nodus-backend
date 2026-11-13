@@ -1,12 +1,24 @@
+using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Nodus.Api.DTOs;
 using Nodus.Api.Enums;
+using Nodus.Api.Services;
 
 namespace Nodus.Api.Controllers;
 
 [ApiController]
-public class NodesController : ControllerBase
+[Authorize]
+public class NodesController(RoadmapService roadmapService) : ControllerBase
 {
+    private Guid GetUserId()
+    {
+        var sub = User.FindFirstValue(ClaimTypes.NameIdentifier)
+               ?? User.FindFirstValue(JwtRegisteredClaimNames.Sub);
+        return Guid.Parse(sub!);
+    }
+
     [HttpPost("/api/roadmaps/{roadmapId:guid}/nodes")]
     public ActionResult<NodeDto> CreateNode(Guid roadmapId, [FromBody] CreateNodeRequest request)
     {
@@ -62,14 +74,24 @@ public class NodesController : ControllerBase
     }
 
     [HttpPatch("/api/checklist-items/{itemId:guid}/toggle")]
-    public IActionResult ToggleChecklistItem(Guid itemId)
+    public async Task<ActionResult<ChecklistItemDto>> ToggleChecklistItem(Guid itemId)
     {
-        return Ok(new { id = itemId, isCompleted = true });
+        var result = await roadmapService.ToggleChecklistItemAsync(itemId, GetUserId());
+        if (result is null)
+            return NotFound(new { error = "Пункт чек-листа не знайдено" });
+
+        return Ok(result);
     }
 
     [HttpPost("/api/nodes/{nodeId:guid}/complete")]
-    public ActionResult<CompleteNodeResponse> CompleteNode(Guid nodeId)
+    public async Task<ActionResult<CompleteNodeResponse>> CompleteNode(Guid nodeId)
     {
-        return Ok(new CompleteNodeResponse(nodeId, new List<Guid> { Guid.NewGuid() }, false));
+        var (response, error) = await roadmapService.CompleteNodeAsync(nodeId, GetUserId());
+        if (error == "Вузол не знайдено")
+            return NotFound(new { error });
+        if (error is not null)
+            return BadRequest(new { error });
+
+        return Ok(response);
     }
 }

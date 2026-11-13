@@ -23,6 +23,9 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             .IsUnique();
 
         modelBuilder.Entity<Roadmap>()
+            .HasIndex(r => r.IsPublic);
+
+        modelBuilder.Entity<Roadmap>()
             .HasOne<Roadmap>()
             .WithMany()
             .HasForeignKey(r => r.ClonedFromId)
