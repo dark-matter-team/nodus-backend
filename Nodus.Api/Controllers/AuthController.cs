@@ -106,6 +106,20 @@ public class AuthController(AuthService authService) : ControllerBase
         }
     }
 
+    [HttpPost("/api/auth/verify-reset-code")]
+    public async Task<IActionResult> VerifyResetCode([FromBody] VerifyResetCodeRequest request)
+    {
+        try
+        {
+            await authService.VerifyResetCodeAsync(request.Email, request.Code);
+            return Ok(new { message = "Code is valid" });
+        }
+        catch (AuthException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
     private Guid GetUserId()
     {
         var idClaim = User.FindFirstValue(ClaimTypes.NameIdentifier);

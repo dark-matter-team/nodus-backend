@@ -173,6 +173,24 @@ public class AuthService(AppDbContext dbContext, IOptions<JwtSettings> jwtOption
 
         await dbContext.SaveChangesAsync();
     }
+    public async Task VerifyResetCodeAsync(string email, string code)
+    {
+        email = NormalizeEmail(email);
+        code = (code ?? string.Empty).Trim();
+
+        var user = await dbContext.Users
+            .AsNoTracking()
+            .FirstOrDefaultAsync(u => u.Email == email);
+
+        if (user is null ||
+            string.IsNullOrEmpty(user.PasswordResetCode) ||
+            user.PasswordResetCode != code ||
+            user.PasswordResetCodeExpiresAt is null ||
+            user.PasswordResetCodeExpiresAt <= DateTime.UtcNow)
+        {
+            throw new AuthException("Invalid or expired code");
+        }
+    }
 
     public async Task<UserProfileDto> GetUserProfileAsync(Guid userId)
     {
