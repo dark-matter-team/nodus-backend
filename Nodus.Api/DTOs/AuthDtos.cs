@@ -7,3 +7,4 @@ public record UserProfileDto(Guid Id, string Email, string Nickname, string? Ava
 public record AuthResponse(string AccessToken, UserProfileDto User);
 public record ForgotPasswordRequest(string Email);
 public record ResetPasswordRequest(string Email, string Code, string NewPassword);
+public record VerifyResetCodeRequest(string Email,string Code);
