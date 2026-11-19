@@ -195,4 +195,195 @@ public class RoadmapService(AppDbContext dbContext)
 
         return (new CompleteNodeResponse(nodeId, unlockedNodeIds, isRoadmapCompleted), null);
     }
+
+    public async Task<(NodeDto? Node, string? Error)> UpdateNodeAsync(Guid nodeId, Guid userId, UpdateNodeRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(request.Title))
+            return (null, "Назва вузла не може бути порожньою");
+
+        var node = await dbContext.RoadmapNodes
+            .Include(n => n.ChecklistItems)
+            .Include(n => n.Roadmap)
+                .ThenInclude(r => r.Nodes)
+            .FirstOrDefaultAsync(n => n.Id == nodeId && n.Roadmap.OwnerId == userId);
+
+        if (node is null)
+            return (null, "Вузол не знайдено");
+
+        if (request.ParentNodeId.HasValue)
+        {
+            if (request.ParentNodeId.Value == nodeId)
+                return (null, "Вузол не може бути батьківським сам для себе");
+
+            var parentExists = node.Roadmap.Nodes.Any(n => n.Id == request.ParentNodeId.Value);
+            if (!parentExists)
+                return (null, "Батьківський вузол не знайдено в цьому дереві");
+
+            // Cycle protection: walk up from proposed parent to root
+            var currentId = request.ParentNodeId;
+            while (currentId.HasValue)
+            {
+                if (currentId.Value == nodeId)
+                    return (null, "Неможливо обрати дочірній вузол як батьківський (утвориться цикл)");
+
+                currentId = node.Roadmap.Nodes.FirstOrDefault(n => n.Id == currentId.Value)?.ParentNodeId;
+            }
+        }
+
+        node.ParentNodeId = request.ParentNodeId;
+        node.Title = request.Title.Trim();
+        node.Description = request.Description?.Trim() ?? string.Empty;
+        node.Category = request.Category;
+        node.EstimatedMinutes = request.EstimatedMinutes > 0 ? request.EstimatedMinutes : 30;
+
+        dbContext.NodeChecklistItems.RemoveRange(node.ChecklistItems);
+
+        var updatedChecklist = (request.Checklist ?? [])
+            .Where(c => !string.IsNullOrWhiteSpace(c.Title))
+            .Select((c, index) => new NodeChecklistItem
+            {
+                Id = Guid.NewGuid(),
+                NodeId = node.Id,
+                Title = c.Title.Trim(),
+                IsCompleted = c.IsCompleted,
+                SortOrder = index + 1
+            })
+            .ToList();
+
+        dbContext.NodeChecklistItems.AddRange(updatedChecklist);
+        await dbContext.SaveChangesAsync();
+
+        var dto = new NodeDto(
+            node.Id,
+            node.ParentNodeId,
+            node.Title,
+            node.Description,
+            node.Category,
+            node.EstimatedMinutes,
+            node.Status,
+            node.PositionX,
+            node.PositionY,
+            updatedChecklist.Select(c => new ChecklistItemDto(c.Id, c.Title, c.IsCompleted, c.SortOrder)).ToList()
+        );
+
+        return (dto, null);
+    }
+
+    public async Task<bool> DeleteNodeAsync(Guid nodeId, Guid userId)
+    {
+        var node = await dbContext.RoadmapNodes
+            .Include(n => n.Roadmap)
+                .ThenInclude(r => r.Nodes)
+            .FirstOrDefaultAsync(n => n.Id == nodeId && n.Roadmap.OwnerId == userId);
+
+        if (node is null) return false;
+
+        var children = node.Roadmap.Nodes.Where(n => n.ParentNodeId == nodeId).ToList();
+        var isNewParentCompleted = !node.ParentNodeId.HasValue ||
+            node.Roadmap.Nodes.FirstOrDefault(n => n.Id == node.ParentNodeId.Value)?.Status == NodeStatus.Completed;
+
+        foreach (var child in children)
+        {
+            child.ParentNodeId = node.ParentNodeId;
+            if (isNewParentCompleted && child.Status == NodeStatus.Locked)
+            {
+                child.Status = NodeStatus.Available;
+            }
+        }
+
+        await dbContext.SaveChangesAsync();
+
+        dbContext.RoadmapNodes.Remove(node);
+        await dbContext.SaveChangesAsync();
+
+        return true;
+    }
+
+    public async Task<(NodeDto? Node, string? Error)> CreateNodeAsync(Guid roadmapId, Guid userId, CreateNodeRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(request.Title))
+            return (null, "Назва вузла не може бути порожньою");
+
+        var roadmap = await dbContext.Roadmaps
+            .Include(r => r.Nodes)
+            .FirstOrDefaultAsync(r => r.Id == roadmapId && r.OwnerId == userId);
+
+        if (roadmap is null)
+            return (null, "Дерево не знайдено");
+
+        var nodeStatus = NodeStatus.Available;
+        if (request.ParentNodeId.HasValue)
+        {
+            var parent = roadmap.Nodes.FirstOrDefault(n => n.Id == request.ParentNodeId.Value);
+            if (parent is null)
+                return (null, "Батьківський вузол не знайдено в цьому дереві");
+
+            nodeStatus = parent.Status == NodeStatus.Completed ? NodeStatus.Available : NodeStatus.Locked;
+        }
+
+        var nodeId = Guid.NewGuid();
+        var checklistItems = (request.Checklist ?? [])
+            .Where(t => !string.IsNullOrWhiteSpace(t))
+            .Select((title, index) => new NodeChecklistItem
+            {
+                Id = Guid.NewGuid(),
+                NodeId = nodeId,
+                Title = title.Trim(),
+                IsCompleted = false,
+                SortOrder = index + 1
+            })
+            .ToList();
+
+        var newNode = new RoadmapNode
+        {
+            Id = nodeId,
+            RoadmapId = roadmapId,
+            ParentNodeId = request.ParentNodeId,
+            Title = request.Title.Trim(),
+            Description = request.Description?.Trim() ?? string.Empty,
+            Category = request.Category,
+            EstimatedMinutes = request.EstimatedMinutes > 0 ? request.EstimatedMinutes : 30,
+            Status = nodeStatus,
+            PositionX = request.PositionX,
+            PositionY = request.PositionY,
+            ChecklistItems = checklistItems
+        };
+
+        if (roadmap.Status == RoadmapStatus.Completed)
+        {
+            roadmap.Status = RoadmapStatus.Active;
+        }
+
+        dbContext.RoadmapNodes.Add(newNode);
+        await dbContext.SaveChangesAsync();
+
+        var dto = new NodeDto(
+            newNode.Id,
+            newNode.ParentNodeId,
+            newNode.Title,
+            newNode.Description,
+            newNode.Category,
+            newNode.EstimatedMinutes,
+            newNode.Status,
+            newNode.PositionX,
+            newNode.PositionY,
+            checklistItems.Select(c => new ChecklistItemDto(c.Id, c.Title, c.IsCompleted, c.SortOrder)).ToList()
+        );
+
+        return (dto, null);
+    }
+
+    public async Task<bool> UpdateNodePositionAsync(Guid nodeId, Guid userId, double positionX, double positionY)
+    {
+        var node = await dbContext.RoadmapNodes
+            .Include(n => n.Roadmap)
+            .FirstOrDefaultAsync(n => n.Id == nodeId && n.Roadmap.OwnerId == userId);
+
+        if (node is null) return false;
+
+        node.PositionX = positionX;
+        node.PositionY = positionY;
+        await dbContext.SaveChangesAsync();
+        return true;
+    }
 }

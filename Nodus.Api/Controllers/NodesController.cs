@@ -3,7 +3,6 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Nodus.Api.DTOs;
-using Nodus.Api.Enums;
 using Nodus.Api.Services;
 
 namespace Nodus.Api.Controllers;
@@ -20,56 +19,46 @@ public class NodesController(RoadmapService roadmapService) : ControllerBase
     }
 
     [HttpPost("/api/roadmaps/{roadmapId:guid}/nodes")]
-    public ActionResult<NodeDto> CreateNode(Guid roadmapId, [FromBody] CreateNodeRequest request)
+    public async Task<ActionResult<NodeDto>> CreateNode(Guid roadmapId, [FromBody] CreateNodeRequest request)
     {
-        var checklist = request.Checklist
-            .Select((title, index) => new ChecklistItemDto(Guid.NewGuid(), title, false, index + 1))
-            .ToList();
-
-        var node = new NodeDto(
-            Guid.NewGuid(),
-            request.ParentNodeId,
-            request.Title,
-            request.Description,
-            request.Category,
-            request.EstimatedMinutes,
-            request.ParentNodeId == null ? NodeStatus.Available : NodeStatus.Locked,
-            request.PositionX,
-            request.PositionY,
-            checklist
-        );
+        var (node, error) = await roadmapService.CreateNodeAsync(roadmapId, GetUserId(), request);
+        if (error == "Дерево не знайдено")
+            return NotFound(new { error });
+        if (error is not null)
+            return BadRequest(new { error });
 
         return Ok(node);
     }
 
     [HttpPut("/api/nodes/{nodeId:guid}")]
-    public ActionResult<NodeDto> UpdateNode(Guid nodeId, [FromBody] UpdateNodeRequest request)
+    public async Task<ActionResult<NodeDto>> UpdateNode(Guid nodeId, [FromBody] UpdateNodeRequest request)
     {
-        var node = new NodeDto(
-            nodeId,
-            request.ParentNodeId,
-            request.Title,
-            request.Description,
-            request.Category,
-            request.EstimatedMinutes,
-            NodeStatus.Available,
-            0,
-            0,
-            request.Checklist
-        );
+        var (node, error) = await roadmapService.UpdateNodeAsync(nodeId, GetUserId(), request);
+        if (error == "Вузол не знайдено")
+            return NotFound(new { error });
+        if (error is not null)
+            return BadRequest(new { error });
 
         return Ok(node);
     }
 
     [HttpPatch("/api/nodes/{nodeId:guid}/position")]
-    public IActionResult UpdateNodePosition(Guid nodeId, [FromBody] UpdatePositionRequest request)
+    public async Task<IActionResult> UpdateNodePosition(Guid nodeId, [FromBody] UpdatePositionRequest request)
     {
+        var updated = await roadmapService.UpdateNodePositionAsync(nodeId, GetUserId(), request.PositionX, request.PositionY);
+        if (!updated)
+            return NotFound(new { error = "Вузол не знайдено" });
+
         return Ok(new { id = nodeId, positionX = request.PositionX, positionY = request.PositionY });
     }
 
     [HttpDelete("/api/nodes/{nodeId:guid}")]
-    public IActionResult DeleteNode(Guid nodeId)
+    public async Task<IActionResult> DeleteNode(Guid nodeId)
     {
+        var deleted = await roadmapService.DeleteNodeAsync(nodeId, GetUserId());
+        if (!deleted)
+            return NotFound(new { error = "Вузол не знайдено" });
+
         return NoContent();
     }
 
