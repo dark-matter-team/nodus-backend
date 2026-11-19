@@ -116,7 +116,7 @@ public class AuthController(AuthService authService) : ControllerBase
         }
         catch (AuthException ex)
         {
-            return BadRequest(new { message = ex.Message });
+            return BadRequest(new { error = ex.Message });
         }
     }
 
