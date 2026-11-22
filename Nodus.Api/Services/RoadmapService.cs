@@ -386,4 +386,50 @@ public class RoadmapService(AppDbContext dbContext)
         await dbContext.SaveChangesAsync();
         return true;
     }
+
+    public async Task<(PublicRoadmapSummaryDto? Response, string? Error, int StatusCode)> PublishRoadmapAsync(Guid roadmapId, Guid userId, PublishRoadmapRequest request)
+    {
+        var roadmap = await dbContext.Roadmaps
+            .Include(r => r.Owner)
+            .Include(r => r.Nodes)
+            .FirstOrDefaultAsync(r => r.Id == roadmapId);
+
+        if (roadmap is null)
+            return (null, "Дерево не знайдено", 404);
+
+        if (roadmap.OwnerId != userId)
+            return (null, "У вас немає доступу до цього дерева", 403);
+
+        if (string.IsNullOrWhiteSpace(request.Title))
+            return (null, "Назва не може бути порожньою", 400);
+
+        if (roadmap.Nodes.Count == 0)
+            return (null, "Неможливо опублікувати порожнє дерево без вузлів", 400);
+
+        roadmap.Title = request.Title.Trim();
+        roadmap.PublicDescription = string.IsNullOrWhiteSpace(request.PublicDescription) ? null : request.PublicDescription.Trim();
+        roadmap.KnowledgeLevel = request.KnowledgeLevel;
+        roadmap.Tags = (request.Tags ?? [])
+            .Where(t => !string.IsNullOrWhiteSpace(t))
+            .Select(t => t.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        roadmap.IsPublic = true;
+
+        await dbContext.SaveChangesAsync();
+
+        var response = new PublicRoadmapSummaryDto(
+            roadmap.Id,
+            roadmap.Title,
+            roadmap.PublicDescription,
+            roadmap.Owner.Nickname,
+            roadmap.Owner.AvatarUrl,
+            roadmap.KnowledgeLevel,
+            roadmap.Tags,
+            roadmap.Nodes.Count,
+            roadmap.ClonesCount
+        );
+
+        return (response, null, 200);
+    }
 }

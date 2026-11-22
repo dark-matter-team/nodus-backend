@@ -1,16 +1,32 @@
+using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Nodus.Api.DTOs;
 using Nodus.Api.Enums;
+using Nodus.Api.Services;
 
 namespace Nodus.Api.Controllers;
 
 [ApiController]
-public class CatalogController : ControllerBase
+public class CatalogController(RoadmapService roadmapService) : ControllerBase
 {
-    [HttpPost("/api/roadmaps/{id:guid}/publish")]
-    public IActionResult PublishRoadmap(Guid id, [FromBody] PublishRoadmapRequest request)
+    private Guid GetUserId()
     {
-        return Ok(new { id, title = request.Title, isPublic = true });
+        var sub = User.FindFirstValue(ClaimTypes.NameIdentifier)
+               ?? User.FindFirstValue(JwtRegisteredClaimNames.Sub);
+        return Guid.Parse(sub!);
+    }
+
+    [Authorize]
+    [HttpPost("/api/roadmaps/{id:guid}/publish")]
+    public async Task<ActionResult<PublicRoadmapSummaryDto>> PublishRoadmap(Guid id, [FromBody] PublishRoadmapRequest request)
+    {
+        var (result, error, statusCode) = await roadmapService.PublishRoadmapAsync(id, GetUserId(), request);
+        if (error is not null)
+            return StatusCode(statusCode, new { error });
+
+        return Ok(result);
     }
 
     [HttpGet("/api/public-roadmaps")]
@@ -60,5 +76,4 @@ public class CatalogController : ControllerBase
     {
         return Ok(new CloneRoadmapResponse(Guid.NewGuid()));
     }
-
 }
