@@ -49,9 +49,14 @@ public class CatalogController(RoadmapService roadmapService) : ControllerBase
         return Ok(roadmap);
     }
 
+    [Authorize]
     [HttpPost("/api/public-roadmaps/{id:guid}/clone")]
-    public ActionResult<CloneRoadmapResponse> CloneRoadmap(Guid id)
+    public async Task<ActionResult<CloneRoadmapResponse>> CloneRoadmap(Guid id)
     {
-        return Ok(new CloneRoadmapResponse(Guid.NewGuid()));
+        var result = await roadmapService.ClonePublicRoadmapAsync(id, GetUserId());
+        if (result is null)
+            return NotFound(new { error = "Публічне дерево не знайдено" });
+
+        return Ok(result);
     }
 }

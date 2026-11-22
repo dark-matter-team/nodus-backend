@@ -513,4 +513,76 @@ public class RoadmapService(AppDbContext dbContext)
             )).ToList()
         );
     }
+
+    public async Task<CloneRoadmapResponse?> ClonePublicRoadmapAsync(Guid roadmapId, Guid userId)
+    {
+        var original = await dbContext.Roadmaps
+            .Include(r => r.Nodes)
+                .ThenInclude(n => n.ChecklistItems)
+            .FirstOrDefaultAsync(r => r.Id == roadmapId && r.IsPublic);
+
+        if (original is null)
+            return null;
+
+        var clonedRoadmapId = Guid.NewGuid();
+
+        var nodeIdMap = original.Nodes.ToDictionary(n => n.Id, _ => Guid.NewGuid());
+
+        var clonedNodes = original.Nodes.Select(oldNode =>
+        {
+            var newNodeId = nodeIdMap[oldNode.Id];
+            Guid? newParentId = oldNode.ParentNodeId.HasValue && nodeIdMap.TryGetValue(oldNode.ParentNodeId.Value, out var mappedParentId)
+                ? mappedParentId
+                : null;
+
+            return new RoadmapNode
+            {
+                Id = newNodeId,
+                RoadmapId = clonedRoadmapId,
+                ParentNodeId = newParentId,
+                Title = oldNode.Title,
+                Description = oldNode.Description,
+                Category = oldNode.Category,
+                EstimatedMinutes = oldNode.EstimatedMinutes,
+                Status = newParentId is null ? NodeStatus.Available : NodeStatus.Locked,
+                CompletedAt = null,
+                PositionX = oldNode.PositionX,
+                PositionY = oldNode.PositionY,
+                ChecklistItems = oldNode.ChecklistItems
+                    .OrderBy(c => c.SortOrder)
+                    .Select(c => new NodeChecklistItem
+                    {
+                        Id = Guid.NewGuid(),
+                        NodeId = newNodeId,
+                        Title = c.Title,
+                        IsCompleted = false,
+                        SortOrder = c.SortOrder
+                    })
+                    .ToList()
+            };
+        }).ToList();
+
+        var clonedRoadmap = new Roadmap
+        {
+            Id = clonedRoadmapId,
+            OwnerId = userId,
+            Title = original.Title,
+            GoalPrompt = original.GoalPrompt,
+            KnowledgeLevel = original.KnowledgeLevel,
+            TimeCommitment = original.TimeCommitment,
+            Status = RoadmapStatus.Active,
+            IsPublic = false,
+            PublicDescription = null,
+            ClonesCount = 0,
+            Tags = [.. original.Tags],
+            Nodes = clonedNodes
+        };
+
+        original.ClonesCount += 1;
+
+        dbContext.Roadmaps.Add(clonedRoadmap);
+        await dbContext.SaveChangesAsync();
+
+        return new CloneRoadmapResponse(clonedRoadmapId);
+    }
 }
