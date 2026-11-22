@@ -432,4 +432,85 @@ public class RoadmapService(AppDbContext dbContext)
 
         return (response, null, 200);
     }
+
+    public async Task<List<PublicRoadmapSummaryDto>> GetPublicRoadmapsAsync(string? search, string? tag, KnowledgeLevel? level)
+    {
+        var query = dbContext.Roadmaps
+            .AsNoTracking()
+            .Where(r => r.IsPublic);
+
+        if (level.HasValue)
+        {
+            query = query.Where(r => r.KnowledgeLevel == level.Value);
+        }
+
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var normalizedSearch = search.Trim().ToLower();
+            query = query.Where(r =>
+                r.Title.ToLower().Contains(normalizedSearch) ||
+                (r.PublicDescription != null && r.PublicDescription.ToLower().Contains(normalizedSearch)));
+        }
+
+        if (!string.IsNullOrWhiteSpace(tag))
+        {
+            var normalizedTag = tag.Trim().ToLower();
+            query = query.Where(r => r.Tags.Any(t => t.ToLower() == normalizedTag));
+        }
+
+        return await query
+            .OrderByDescending(r => r.ClonesCount)
+            .ThenByDescending(r => r.CreatedAt)
+            .Select(r => new PublicRoadmapSummaryDto(
+                r.Id,
+                r.Title,
+                r.PublicDescription,
+                r.Owner.Nickname,
+                r.Owner.AvatarUrl,
+                r.KnowledgeLevel,
+                r.Tags,
+                r.Nodes.Count,
+                r.ClonesCount
+            ))
+            .ToListAsync();
+    }
+
+    public async Task<PublicRoadmapFullDto?> GetPublicRoadmapByIdAsync(Guid roadmapId)
+    {
+        var roadmap = await dbContext.Roadmaps
+            .AsNoTracking()
+            .Include(r => r.Owner)
+            .Include(r => r.Nodes)
+                .ThenInclude(n => n.ChecklistItems)
+            .FirstOrDefaultAsync(r => r.Id == roadmapId && r.IsPublic);
+
+        if (roadmap is null)
+            return null;
+
+        return new PublicRoadmapFullDto(
+            roadmap.Id,
+            roadmap.Title,
+            roadmap.PublicDescription,
+            roadmap.Owner.Nickname,
+            roadmap.Owner.AvatarUrl,
+            roadmap.KnowledgeLevel,
+            roadmap.Tags,
+            roadmap.ClonesCount,
+            roadmap.Nodes.Select(n => new NodeDto(
+                n.Id,
+                n.ParentNodeId,
+                n.Title,
+                n.Description,
+                n.Category,
+                n.EstimatedMinutes,
+                n.Status,
+                n.PositionX,
+                n.PositionY,
+                n.ChecklistItems
+                    .OrderBy(c => c.SortOrder)
+                    .Select(c => new ChecklistItemDto(c.Id, c.Title, c.IsCompleted, c.SortOrder))
+                    .ToList()
+            )).ToList()
+        );
+    }
 }
