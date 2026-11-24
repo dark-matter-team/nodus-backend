@@ -1,6 +1,8 @@
 ﻿using System.Net.Mail;
 using System.Security.Claims;
+using System.Security.Cryptography;
 using System.Text;
+using Google.Apis.Auth;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.JsonWebTokens;
@@ -8,16 +10,20 @@ using Microsoft.IdentityModel.Tokens;
 using Nodus.Api.Data;
 using Nodus.Api.DTOs;
 using Nodus.Api.Entities;
-using Google.Apis.Auth;
-using System.Net;
+using Nodus.Api.Exceptions;
+using Npgsql;
 
 namespace Nodus.Api.Services;
 
-public class AuthService(AppDbContext dbContext, IOptions<JwtSettings> jwtOptions, IOptions<GoogleSettings> googleOptions, IOptions<SmtpSettings> smtpOptions)
+public class AuthService(
+    AppDbContext dbContext,
+    IOptions<JwtSettings> jwtOptions,
+    IOptions<GoogleSettings> googleOptions,
+    IEmailService emailService)
 {
     private readonly JwtSettings _jwt = jwtOptions.Value;
     private readonly GoogleSettings _google = googleOptions.Value;
-    private readonly SmtpSettings _smtp = smtpOptions.Value;
+
     public async Task<AuthResponse> RegisterAsync(string email, string password, string nickname)
     {
         email = NormalizeEmail(email);
@@ -25,12 +31,9 @@ public class AuthService(AppDbContext dbContext, IOptions<JwtSettings> jwtOption
 
         ValidateEmail(email);
         ValidatePassword(password);
-        if (nickname.Length is < 2 or > 50 || nickname.Contains('@'))
-           throw new AuthException("Нікнейм має містити від 2 до 50 символів і не містити '@'");
 
-        var normalizedNickname = nickname.ToLowerInvariant();
-        if (await dbContext.Users.AnyAsync(u => u.Email == email || u.Nickname.ToLower() == normalizedNickname))
-            throw new AuthException("Користувач з таким email або нікнеймом вже існує");
+        if (nickname.Length is < 2 or > 50 || nickname.Contains('@'))
+            throw new ValidationException("Nickname must be between 2 and 50 characters and cannot contain '@'");
 
         var user = new User
         {
@@ -43,13 +46,14 @@ public class AuthService(AppDbContext dbContext, IOptions<JwtSettings> jwtOption
         };
 
         dbContext.Users.Add(user);
+
         try
         {
             await dbContext.SaveChangesAsync();
         }
-        catch (DbUpdateException)
+        catch (DbUpdateException ex) when (ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
         {
-            throw new AuthException("Користувач з таким email вже існує");
+            throw new ConflictException("A user with this email or nickname already exists");
         }
 
         return BuildAuthResponse(user);
@@ -58,113 +62,146 @@ public class AuthService(AppDbContext dbContext, IOptions<JwtSettings> jwtOption
     public async Task<AuthResponse> LoginAsync(string? email, string? password, string? nickname)
     {
         if (string.IsNullOrWhiteSpace(email) && string.IsNullOrWhiteSpace(nickname))
-        {
-            throw new AuthException("Введіть email або нікнейм", StatusCodes.Status400BadRequest);
-        }
+            throw new ValidationException("Email or nickname is required");
 
-        User? user = null;
+        var user = !string.IsNullOrWhiteSpace(email)
+            ? await dbContext.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Email == NormalizeEmail(email))
+            : await dbContext.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Nickname.ToLower() == nickname!.Trim().ToLowerInvariant());
 
-        if (!string.IsNullOrWhiteSpace(email))
+        if (user is null ||
+            user.PasswordHash is null ||
+            string.IsNullOrEmpty(password) ||
+            !BCrypt.Net.BCrypt.Verify(password, user.PasswordHash))
         {
-            var normalizedEmail = NormalizeEmail(email);
-            user = await dbContext.Users.FirstOrDefaultAsync(u => u.Email == normalizedEmail);
-        }
-        else if (!string.IsNullOrWhiteSpace(nickname))
-        {
-            var normalizedNickname = nickname.Trim().ToLowerInvariant();
-            user = await dbContext.Users.FirstOrDefaultAsync(u => u.Nickname.ToLower() == normalizedNickname);
-        }
-        if (user is not null && user.PasswordHash is null)  
-        {
-            throw new AuthException("Цей акаунт створено через Google. Увійдіть за допомогою Google", StatusCodes.Status401Unauthorized);
-        }
-        else if (user is null || string.IsNullOrEmpty(password) || !BCrypt.Net.BCrypt.Verify(password, user.PasswordHash))
-        {
-            throw new AuthException("Невірний email/нікнейм або пароль", StatusCodes.Status401Unauthorized);
+            throw new UnauthorizedException("Invalid credentials");
         }
 
         return BuildAuthResponse(user);
     }
-    public async Task<AuthResponse> GoogleLoginAsync(string IdToken)
+    public async Task<AuthResponse> GoogleLoginAsync(string idToken)
     {
-        if (string.IsNullOrWhiteSpace(IdToken))
-        {
-            throw new AuthException("Токен авторизації Google є обов'язковим", StatusCodes.Status400BadRequest);
-        }
+        if (string.IsNullOrWhiteSpace(idToken))
+            throw new ValidationException("Google ID token is required");
+
+        var allowedAudiences = _google.GetAllClientIds();
+        if (allowedAudiences.Count == 0)
+            throw new InvalidOperationException("Google OAuth client IDs are not configured.");
+
         var settings = new GoogleJsonWebSignature.ValidationSettings
         {
-            Audience = [_google.ClientId, "407408718192.apps.googleusercontent.com"]
+            Audience = allowedAudiences
         };
+
         GoogleJsonWebSignature.Payload payload;
         try
         {
-            payload = await GoogleJsonWebSignature.ValidateAsync(IdToken, settings);
+            payload = await GoogleJsonWebSignature.ValidateAsync(idToken, settings);
         }
         catch (InvalidJwtException)
         {
-            throw new AuthException("Недійсний Google токен", StatusCodes.Status401Unauthorized);
+            throw new UnauthorizedException("Invalid Google token");
         }
-        if (!payload.EmailVerified || string.IsNullOrEmpty(payload.Email))
-        {
-            throw new AuthException("Email облікового запису Google не підтверджено або відсутній", StatusCodes.Status401Unauthorized);
-        }
-        var email = NormalizeEmail(payload.Email);
-        var user = await dbContext.Users.FirstOrDefaultAsync(u => u.Email == email);
 
-        if(user is null)
+        if (!payload.EmailVerified || string.IsNullOrEmpty(payload.Email))
+            throw new UnauthorizedException("Google account email is missing or not verified");
+
+        var email = NormalizeEmail(payload.Email);
+        var user = await dbContext.Users.FirstOrDefaultAsync(u => u.GoogleId == payload.Subject || u.Email == email);
+
+        if (user is not null)
         {
-            user = new User
+            if (string.IsNullOrEmpty(user.GoogleId))
             {
-                Id = Guid.NewGuid(),
-                Email = email,
-                Nickname = payload.Name ?? email.Split('@')[0],
-                PasswordHash = null,
-                AvatarUrl = payload.Picture,
-                CreatedAt = DateTime.UtcNow,
-                GoogleId = payload.Subject
-            };
-            
-            dbContext.Users.Add(user);
-            try
-            {
+                user.GoogleId = payload.Subject;
                 await dbContext.SaveChangesAsync();
             }
-            catch (DbUpdateException)
-            {
-                throw new AuthException("Не вдалося створити користувача. Можливо, такий нікнейм або email вже зайнято");
-            }
+
+            return BuildAuthResponse(user);
         }
+
+        var nickname = await GenerateUniqueNicknameAsync(payload.Name, email);
+
+        user = new User
+        {
+            Id = Guid.NewGuid(),
+            Email = email,
+            Nickname = nickname,
+            PasswordHash = null,
+            AvatarUrl = payload.Picture,
+            CreatedAt = DateTime.UtcNow,
+            GoogleId = payload.Subject
+        };
+
+        dbContext.Users.Add(user);
+
+        try
+        {
+            await dbContext.SaveChangesAsync();
+        }
+        catch (DbUpdateException ex) when (ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
+        {
+            throw new ConflictException("A user with this email or nickname already exists");
+        }
+
         return BuildAuthResponse(user);
     }
 
-    public async Task ForgotPasswordAsync(string email)
+    public async Task ForgotPasswordAsync(string email, CancellationToken cancellationToken = default)
     {
         email = NormalizeEmail(email);
         ValidateEmail(email);
 
-        var user = await dbContext.Users.FirstOrDefaultAsync(u => u.Email == email)
-                   ?? throw new AuthException("Користувача з таким email не знайдено", StatusCodes.Status404NotFound);
+        var user = await dbContext.Users.FirstOrDefaultAsync(u => u.Email == email, cancellationToken);
+        if (user is null)
+            return;
 
-        var code = Random.Shared.Next(100000, 1000000).ToString();
+        var code = RandomNumberGenerator.GetInt32(100000, 1000000).ToString();
         user.PasswordResetCode = code;
         user.PasswordResetCodeExpiresAt = DateTime.UtcNow.AddMinutes(15);
 
-        await dbContext.SaveChangesAsync();
-        await SendResetEmailAsync(user.Email, code);
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        await emailService.SendEmailAsync(
+            user.Email,
+            "Nodus — Password Reset Code",
+            $"Your password reset code is: {code}\nThis code is valid for 15 minutes.",
+            cancellationToken: cancellationToken);
+    }
+
+    public async Task VerifyResetCodeAsync(string email, string code)
+    {
+        email = NormalizeEmail(email);
+        var normalizedCode = (code ?? string.Empty).Trim();
+
+        var user = await dbContext.Users
+            .AsNoTracking()
+            .FirstOrDefaultAsync(u => u.Email == email);
+
+        if (user is null ||
+            string.IsNullOrEmpty(user.PasswordResetCode) ||
+            user.PasswordResetCode != normalizedCode ||
+            user.PasswordResetCodeExpiresAt is null ||
+            user.PasswordResetCodeExpiresAt <= DateTime.UtcNow)
+        {
+            throw new ValidationException("Invalid or expired reset code");
+        }
     }
 
     public async Task ResetPasswordAsync(string email, string code, string newPassword)
     {
         email = NormalizeEmail(email);
+        var normalizedCode = (code ?? string.Empty).Trim();
         ValidatePassword(newPassword);
 
         var user = await dbContext.Users.FirstOrDefaultAsync(u => u.Email == email);
 
-        if (user is null || string.IsNullOrWhiteSpace(code) ||
-            user.PasswordResetCode != code.Trim() ||
-            user.PasswordResetCodeExpiresAt < DateTime.UtcNow)
+        if (user is null ||
+            string.IsNullOrEmpty(user.PasswordResetCode) ||
+            user.PasswordResetCode != normalizedCode ||
+            user.PasswordResetCodeExpiresAt is null ||
+            user.PasswordResetCodeExpiresAt <= DateTime.UtcNow)
         {
-            throw new AuthException("Недійсний або прострочений код відновлення", StatusCodes.Status400BadRequest);
+            throw new ValidationException("Invalid or expired reset code");
         }
 
         user.PasswordResetCode = null;
@@ -173,42 +210,64 @@ public class AuthService(AppDbContext dbContext, IOptions<JwtSettings> jwtOption
 
         await dbContext.SaveChangesAsync();
     }
-    public async Task VerifyResetCodeAsync(string email, string code)
-    {
-        email = NormalizeEmail(email);
-        code = (code ?? string.Empty).Trim();
-
-        var user = await dbContext.Users
-            .AsNoTracking()
-            .FirstOrDefaultAsync(u => u.Email == email);
-
-        if (user is null ||
-            string.IsNullOrEmpty(user.PasswordResetCode) ||
-            user.PasswordResetCode != code ||
-            user.PasswordResetCodeExpiresAt is null ||
-            user.PasswordResetCodeExpiresAt <= DateTime.UtcNow)
-        {
-            throw new AuthException("Invalid or expired code");
-        }
-    }
 
     public async Task<UserProfileDto> GetUserProfileAsync(Guid userId)
     {
-        var user = await dbContext.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == userId)
-                   ?? throw new AuthException("Користувача не знайдено", StatusCodes.Status404NotFound);
+        var user = await dbContext.Users
+            .AsNoTracking()
+            .FirstOrDefaultAsync(u => u.Id == userId)
+            ?? throw new NotFoundException("User not found");
 
         return ToDto(user);
     }
 
-    public async Task<bool> DeleteUserAccountAsync(Guid userId)
+    public async Task DeleteUserAccountAsync(Guid userId)
     {
-        var user = await dbContext.Users.FindAsync(userId);
-        if (user is null) return false;
+        var user = await dbContext.Users.FindAsync(userId)
+            ?? throw new NotFoundException("User not found");
 
         dbContext.Users.Remove(user);
         await dbContext.SaveChangesAsync();
-        return true;
     }
+
+    private async Task<string> GenerateUniqueNicknameAsync(string? rawName, string email)
+    {
+        var baseName = SanitizeNickname(rawName);
+        if (baseName.Length < 2)
+            baseName = SanitizeNickname(email.Split('@')[0]);
+        if (baseName.Length < 2)
+            baseName = "user";
+
+        if (baseName.Length > 50)
+            baseName = baseName[..50].Trim();
+        if (baseName.Length < 2)
+            baseName = "user";
+
+        var candidate = baseName;
+        var normalizedCandidate = candidate.ToLowerInvariant();
+
+        if (!await dbContext.Users.AnyAsync(u => u.Nickname.ToLower() == normalizedCandidate))
+            return candidate;
+
+        var prefix = baseName.Length > 43 ? baseName[..43].TrimEnd() : baseName;
+        if (prefix.Length == 0)
+            prefix = "user";
+
+        for (var attempt = 0; attempt < 10; attempt++)
+        {
+            var suffix = RandomNumberGenerator.GetInt32(100000, 1000000);
+            candidate = $"{prefix}_{suffix}";
+            normalizedCandidate = candidate.ToLowerInvariant();
+
+            if (!await dbContext.Users.AnyAsync(u => u.Nickname.ToLower() == normalizedCandidate))
+                return candidate;
+        }
+
+        return $"user_{Guid.NewGuid():N}"[..20];
+    }
+
+    private static string SanitizeNickname(string? value) =>
+        (value ?? string.Empty).Replace("@", string.Empty).Trim();
 
     private AuthResponse BuildAuthResponse(User user) => new(
         GenerateJwtToken(user),
@@ -244,43 +303,20 @@ public class AuthService(AppDbContext dbContext, IOptions<JwtSettings> jwtOption
         return new JsonWebTokenHandler().CreateToken(descriptor);
     }
 
-    private static string NormalizeEmail(string? email) => (email ?? string.Empty).Trim().ToLowerInvariant();
+    private static string NormalizeEmail(string? email) =>
+        (email ?? string.Empty).Trim().ToLowerInvariant();
 
     private static void ValidateEmail(string email)
     {
         if (email.Length is 0 or > 254 || !MailAddress.TryCreate(email, out var parsed) || parsed.Address != email)
-            throw new AuthException("Некоректний формат email");
+            throw new ValidationException("Invalid email format");
     }
 
     private static void ValidatePassword(string? password)
     {
         if (string.IsNullOrEmpty(password) || password.Length < 8)
-            throw new AuthException("Пароль має містити щонайменше 8 символів");
+            throw new ValidationException("Password must be at least 8 characters long");
         if (password.Length > 72)
-            throw new AuthException("Пароль не може бути довшим за 72 символи");
-    }
-
-    private async Task SendResetEmailAsync(string toEmail, string code)
-    {
-        using var client = new SmtpClient(_smtp.Host, _smtp.Port)
-        {
-            Credentials = new NetworkCredential(_smtp.Username, _smtp.Password),
-            EnableSsl = true
-        };
-
-        using var message = new MailMessage(_smtp.FromEmail, toEmail)
-        {
-            Subject = "Nodus — Код відновлення пароля",
-            Body = $"Ваш код для скидання пароля: {code}\nКод дійсний протягом 15 хвилин."
-        };
-
-        try
-        {
-            await client.SendMailAsync(message);
-        }
-        catch (Exception)
-        {
-            throw new AuthException("Не вдалося надіслати лист із кодом відновлення", StatusCodes.Status500InternalServerError);
-        }
+            throw new ValidationException("Password cannot exceed 72 characters");
     }
 }

@@ -1,51 +1,39 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Nodus.Api.DTOs;
 using Nodus.Api.Enums;
+using Nodus.Api.Extensions;
 using Nodus.Api.Services;
-using System.IdentityModel.Tokens.Jwt;
-using System.Security.Claims;
-using Microsoft.AspNetCore.Authorization;
 
 namespace Nodus.Api.Controllers;
 
 [ApiController]
-public class CatalogController(RoadmapService roadmapService) : ControllerBase
+public class CatalogController(CatalogService catalogService) : ControllerBase
 {
-    private Guid GetUserId()
-    {
-        var sub = User.FindFirstValue(ClaimTypes.NameIdentifier)
-               ?? User.FindFirstValue(JwtRegisteredClaimNames.Sub);
-        return Guid.Parse(sub!);
-    }
-
     [Authorize]
     [HttpPost("/api/roadmaps/{id:guid}/publish")]
-    public async Task<ActionResult<PublicRoadmapSummaryDto>> PublishRoadmap(Guid id, [FromBody] PublishRoadmapRequest request)
+    public async Task<ActionResult<PublicRoadmapSummaryDto>> PublishRoadmap(
+        Guid id,
+        [FromBody] PublishRoadmapRequest request)
     {
-        var (result, error, statusCode) = await roadmapService.PublishRoadmapAsync(id, GetUserId(), request);
-        if (error is not null)
-            return StatusCode(statusCode, new { error });
-
+        var result = await catalogService.PublishRoadmapAsync(id, User.GetUserId(), request);
         return Ok(result);
     }
 
     [HttpGet("/api/public-roadmaps")]
     public async Task<ActionResult<List<PublicRoadmapSummaryDto>>> GetPublicRoadmaps(
-         [FromQuery] string? search,
-         [FromQuery] string? tag,
-         [FromQuery] KnowledgeLevel? level)
+        [FromQuery] string? search,
+        [FromQuery] string? tag,
+        [FromQuery] KnowledgeLevel? level)
     {
-        var list = await roadmapService.GetPublicRoadmapsAsync(search, tag, level);
+        var list = await catalogService.GetPublicRoadmapsAsync(search, tag, level);
         return Ok(list);
     }
 
     [HttpGet("/api/public-roadmaps/{id:guid}")]
     public async Task<ActionResult<PublicRoadmapFullDto>> GetPublicRoadmapById(Guid id)
     {
-        var roadmap = await roadmapService.GetPublicRoadmapByIdAsync(id);
-        if (roadmap is null)
-            return NotFound(new { error = "Публічне дерево не знайдено" });
-
+        var roadmap = await catalogService.GetPublicRoadmapByIdAsync(id);
         return Ok(roadmap);
     }
 
@@ -53,10 +41,7 @@ public class CatalogController(RoadmapService roadmapService) : ControllerBase
     [HttpPost("/api/public-roadmaps/{id:guid}/clone")]
     public async Task<ActionResult<CloneRoadmapResponse>> CloneRoadmap(Guid id)
     {
-        var result = await roadmapService.ClonePublicRoadmapAsync(id, GetUserId());
-        if (result is null)
-            return NotFound(new { error = "Публічне дерево не знайдено" });
-
+        var result = await catalogService.ClonePublicRoadmapAsync(id, User.GetUserId());
         return Ok(result);
     }
 }
