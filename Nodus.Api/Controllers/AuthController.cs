@@ -1,8 +1,8 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Nodus.Api.DTOs;
+using Nodus.Api.Extensions;
 using Nodus.Api.Services;
-using System.Security.Claims;
-using Microsoft.AspNetCore.Authorization;
 
 namespace Nodus.Api.Controllers;
 
@@ -12,120 +12,54 @@ public class AuthController(AuthService authService) : ControllerBase
     [HttpPost("/api/auth/google")]
     public async Task<ActionResult<AuthResponse>> GoogleLogin([FromBody] GoogleAuthRequest request)
     {
-        try
-        {
-            return Ok(await authService.GoogleLoginAsync(request.IdToken));
-        }
-        catch(AuthException ex)
-        {
-            return StatusCode(ex.StatusCode, new { error = ex.Message });
-
-        }
+        return Ok(await authService.GoogleLoginAsync(request.IdToken));
     }
 
     [HttpPost("/api/auth/register")]
-    public async Task<IActionResult> Register([FromBody] RegisterRequest request)
+    public async Task<ActionResult<AuthResponse>> Register([FromBody] RegisterRequest request)
     {
-        try
-        {
-            return Ok(await authService.RegisterAsync(request.Email, request.Password, request.Nickname));
-        }
-        catch (AuthException ex)
-        {
-            return StatusCode(ex.StatusCode, new { error = ex.Message });
-        }
+        return Ok(await authService.RegisterAsync(request.Email, request.Password, request.Nickname));
     }
 
     [HttpPost("/api/auth/login")]
-    public async Task<IActionResult> Login([FromBody] LoginRequest request)
+    public async Task<ActionResult<AuthResponse>> Login([FromBody] LoginRequest request)
     {
-        try
-        {
-            return Ok(await authService.LoginAsync(request.Email, request.Password, request.Nickname));
-        }
-        catch (AuthException ex)
-        {
-            return StatusCode(ex.StatusCode, new { error = ex.Message });
-        }
+        return Ok(await authService.LoginAsync(request.Email, request.Password, request.Nickname));
     }
 
     [Authorize]
     [HttpGet("/api/users/me")]
     public async Task<ActionResult<UserProfileDto>> GetCurrentUser()
     {
-        try
-        {
-            return Ok(await authService.GetUserProfileAsync(GetUserId()));
-        }
-        catch (AuthException ex)
-        {
-            return StatusCode(ex.StatusCode, new { error = ex.Message });
-        }
+        return Ok(await authService.GetUserProfileAsync(User.GetUserId()));
     }
 
     [Authorize]
     [HttpDelete("/api/users/me")]
     public async Task<IActionResult> DeleteAccount()
     {
-        try
-        {
-            var deleted = await authService.DeleteUserAccountAsync(GetUserId());
-            return deleted ? NoContent() : NotFound(new { error = "Користувача не знайдено" });
-        }
-        catch (AuthException ex)
-        {
-            return StatusCode(ex.StatusCode, new { error = ex.Message });
-        }
+        await authService.DeleteUserAccountAsync(User.GetUserId());
+        return NoContent();
     }
 
     [HttpPost("/api/auth/forgot-password")]
     public async Task<IActionResult> ForgotPassword([FromBody] ForgotPasswordRequest request)
     {
-        try
-        {
-            await authService.ForgotPasswordAsync(request.Email);
-            return Ok(new { message = "Код відновлення надіслано на вашу пошту" });
-        }
-        catch (AuthException ex)
-        {
-            return StatusCode(ex.StatusCode, new { error = ex.Message });
-        }
+        await authService.ForgotPasswordAsync(request.Email, HttpContext.RequestAborted);
+        return Ok(new { message = "If this email is registered, a reset code has been sent." });
     }
 
     [HttpPost("/api/auth/reset-password")]
     public async Task<IActionResult> ResetPassword([FromBody] ResetPasswordRequest request)
     {
-        try
-        {
-            await authService.ResetPasswordAsync(request.Email, request.Code, request.NewPassword);
-            return Ok(new { message = "Пароль успішно змінено" });
-        }
-        catch (AuthException ex)
-        {
-            return StatusCode(ex.StatusCode, new { error = ex.Message });
-        }
+        await authService.ResetPasswordAsync(request.Email, request.Code, request.NewPassword);
+        return Ok(new { message = "Password has been reset successfully." });
     }
 
     [HttpPost("/api/auth/verify-reset-code")]
     public async Task<IActionResult> VerifyResetCode([FromBody] VerifyResetCodeRequest request)
     {
-        try
-        {
-            await authService.VerifyResetCodeAsync(request.Email, request.Code);
-            return Ok(new { message = "Code is valid" });
-        }
-        catch (AuthException ex)
-        {
-            return BadRequest(new { error = ex.Message });
-        }
-    }
-
-    private Guid GetUserId()
-    {
-        var idClaim = User.FindFirstValue(ClaimTypes.NameIdentifier);
-        if (!Guid.TryParse(idClaim, out var userId))
-            throw new AuthException("Недійсний токен", StatusCodes.Status401Unauthorized);
-
-        return userId;
+        await authService.VerifyResetCodeAsync(request.Email, request.Code);
+        return Ok(new { message = "Reset code is valid." });
     }
 }
