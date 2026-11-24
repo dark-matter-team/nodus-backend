@@ -66,6 +66,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             ValidateIssuerSigningKey = true,
             IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSettings.Secret))
         };
+        options.Events = new JwtBearerEvents { OnTokenValidated = TokenVersionValidation.ValidateAsync };
     });
 
 builder.Services.AddRoadmapAgent(builder.Configuration);

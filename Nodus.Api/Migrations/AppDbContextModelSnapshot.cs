@@ -210,6 +210,9 @@ namespace Nodus.Api.Migrations
                     b.Property<DateTime?>("PasswordResetCodeExpiresAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<int>("TokenVersion")
+                        .HasColumnType("integer");
+
                     b.HasKey("Id");
 
                     b.HasIndex("Email")
