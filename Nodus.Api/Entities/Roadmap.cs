@@ -11,6 +11,9 @@ public class Roadmap
 
     public string Title { get; set; } = string.Empty;
     public string GoalPrompt { get; set; } = string.Empty;
+
+    /// <summary>Short AI-written overview of the path (shown as the tree's description).</summary>
+    public string? Description { get; set; }
     public KnowledgeLevel KnowledgeLevel { get; set; } = KnowledgeLevel.Beginner;
     
     public string TimeCommitment { get; set; } = string.Empty;

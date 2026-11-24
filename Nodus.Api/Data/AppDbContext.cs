@@ -58,6 +58,9 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             node.Property(n => n.Category).HasConversion<string>().HasMaxLength(FieldLimits.EnumValue);
             node.Property(n => n.Status).HasConversion<string>().HasMaxLength(FieldLimits.EnumValue);
 
+            // AI-suggested learning links: always read with the node, never queried on their own -> one jsonb column.
+            node.OwnsMany(n => n.Resources, resource => resource.ToJson());
+
             // Restrict is intentional: deleting a roadmap/user cascades over all its nodes in one statement
             // (verified on PostgreSQL 16), and NodeService re-links children before deleting a single node.
             node.HasOne(n => n.ParentNode)

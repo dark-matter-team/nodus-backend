@@ -65,6 +65,9 @@ namespace Nodus.Api.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("Description")
+                        .HasColumnType("text");
+
                     b.Property<string>("GoalPrompt")
                         .IsRequired()
                         .HasMaxLength(500)
@@ -255,7 +258,39 @@ namespace Nodus.Api.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
+                    b.OwnsMany("Nodus.Api.Entities.NodeResource", "Resources", b1 =>
+                        {
+                            b1.Property<Guid>("RoadmapNodeId");
+
+                            b1.Property<int>("__synthesizedOrdinal")
+                                .ValueGeneratedOnAdd();
+
+                            b1.Property<bool>("IsFree");
+
+                            b1.Property<string>("Title")
+                                .IsRequired();
+
+                            b1.Property<string>("Type")
+                                .IsRequired();
+
+                            b1.Property<string>("Url")
+                                .IsRequired();
+
+                            b1.HasKey("RoadmapNodeId", "__synthesizedOrdinal");
+
+                            b1.ToTable("RoadmapNodes");
+
+                            b1
+                                .ToJson("Resources")
+                                .HasColumnType("jsonb");
+
+                            b1.WithOwner()
+                                .HasForeignKey("RoadmapNodeId");
+                        });
+
                     b.Navigation("ParentNode");
+
+                    b.Navigation("Resources");
 
                     b.Navigation("Roadmap");
                 });

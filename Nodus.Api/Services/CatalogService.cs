@@ -1,4 +1,4 @@
-﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore;
 using Nodus.Api.Data;
 using Nodus.Api.DTOs;
 using Nodus.Api.Entities;
@@ -131,21 +131,7 @@ public class CatalogService(AppDbContext dbContext)
             roadmap.KnowledgeLevel,
             roadmap.Tags,
             roadmap.ClonesCount,
-            roadmap.Nodes.Select(n => new NodeDto(
-                n.Id,
-                n.ParentNodeId,
-                n.Title,
-                n.Description,
-                n.Category,
-                n.EstimatedMinutes,
-                n.Status,
-                n.PositionX,
-                n.PositionY,
-                n.ChecklistItems
-                    .OrderBy(c => c.SortOrder)
-                    .Select(c => new ChecklistItemDto(c.Id, c.Title, c.IsCompleted, c.SortOrder))
-                    .ToList()
-            )).ToList()
+            roadmap.Nodes.Select(n => n.ToDto()).ToList()
         );
     }
 
@@ -181,6 +167,9 @@ public class CatalogService(AppDbContext dbContext)
                 CompletedAt = null,
                 PositionX = oldNode.PositionX,
                 PositionY = oldNode.PositionY,
+                Resources = oldNode.Resources
+                    .Select(r => new NodeResource { Title = r.Title, Url = r.Url, Type = r.Type, IsFree = r.IsFree })
+                    .ToList(),
                 ChecklistItems = oldNode.ChecklistItems
                     .OrderBy(c => c.SortOrder)
                     .Select(c => new NodeChecklistItem
@@ -201,6 +190,7 @@ public class CatalogService(AppDbContext dbContext)
             OwnerId = userId,
             Title = original.Title,
             GoalPrompt = original.GoalPrompt,
+            Description = original.Description,
             KnowledgeLevel = original.KnowledgeLevel,
             TimeCommitment = original.TimeCommitment,
             Status = RoadmapStatus.Active,
