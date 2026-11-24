@@ -70,6 +70,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 builder.Services.AddScoped<IEmailService, MailKitEmailService>();
 builder.Services.AddScoped<AuthService>();
 builder.Services.AddScoped<RoadmapService>();
+builder.Services.AddScoped<NodeService>();
 builder.Services.AddScoped<CatalogService>();
 
 var app = builder.Build();

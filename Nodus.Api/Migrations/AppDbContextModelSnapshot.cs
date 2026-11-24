@@ -18,7 +18,7 @@ namespace Nodus.Api.Migrations
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "10.0.14")
+                .HasAnnotation("ProductVersion", "10.0.15")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
@@ -40,7 +40,8 @@ namespace Nodus.Api.Migrations
 
                     b.Property<string>("Title")
                         .IsRequired()
-                        .HasColumnType("text");
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
 
                     b.HasKey("Id");
 
@@ -66,13 +67,16 @@ namespace Nodus.Api.Migrations
 
                     b.Property<string>("GoalPrompt")
                         .IsRequired()
-                        .HasColumnType("text");
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
 
                     b.Property<bool>("IsPublic")
                         .HasColumnType("boolean");
 
-                    b.Property<int>("KnowledgeLevel")
-                        .HasColumnType("integer");
+                    b.Property<string>("KnowledgeLevel")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
 
                     b.Property<Guid>("OwnerId")
                         .HasColumnType("uuid");
@@ -80,8 +84,10 @@ namespace Nodus.Api.Migrations
                     b.Property<string>("PublicDescription")
                         .HasColumnType("text");
 
-                    b.Property<int>("Status")
-                        .HasColumnType("integer");
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
 
                     b.PrimitiveCollection<List<string>>("Tags")
                         .IsRequired()
@@ -89,19 +95,25 @@ namespace Nodus.Api.Migrations
 
                     b.Property<string>("TimeCommitment")
                         .IsRequired()
-                        .HasColumnType("text");
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
 
                     b.Property<string>("Title")
                         .IsRequired()
-                        .HasColumnType("text");
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
 
                     b.HasKey("Id");
 
                     b.HasIndex("ClonedFromId");
 
-                    b.HasIndex("IsPublic");
+                    b.HasIndex("ClonesCount", "CreatedAt")
+                        .IsDescending()
+                        .HasDatabaseName("IX_Roadmaps_Public_ClonesCount_CreatedAt")
+                        .HasFilter("\"IsPublic\" = true");
 
-                    b.HasIndex("OwnerId");
+                    b.HasIndex("OwnerId", "CreatedAt")
+                        .IsDescending(false, true);
 
                     b.ToTable("Roadmaps");
                 });
@@ -112,8 +124,10 @@ namespace Nodus.Api.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
-                    b.Property<int>("Category")
-                        .HasColumnType("integer");
+                    b.Property<string>("Category")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
 
                     b.Property<DateTime?>("CompletedAt")
                         .HasColumnType("timestamp with time zone");
@@ -137,12 +151,15 @@ namespace Nodus.Api.Migrations
                     b.Property<Guid>("RoadmapId")
                         .HasColumnType("uuid");
 
-                    b.Property<int>("Status")
-                        .HasColumnType("integer");
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
 
                     b.Property<string>("Title")
                         .IsRequired()
-                        .HasColumnType("text");
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
 
                     b.HasKey("Id");
 
@@ -167,20 +184,25 @@ namespace Nodus.Api.Migrations
 
                     b.Property<string>("Email")
                         .IsRequired()
-                        .HasColumnType("text");
+                        .HasMaxLength(254)
+                        .HasColumnType("character varying(254)");
 
                     b.Property<string>("GoogleId")
-                        .HasColumnType("text");
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
 
                     b.Property<string>("Nickname")
                         .IsRequired()
-                        .HasColumnType("text");
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
 
                     b.Property<string>("PasswordHash")
                         .HasColumnType("text");
 
                     b.Property<string>("PasswordResetCode")
-                        .HasColumnType("text");
+                        .HasMaxLength(6)
+                        .HasColumnType("character(6)")
+                        .IsFixedLength();
 
                     b.Property<DateTime?>("PasswordResetCodeExpiresAt")
                         .HasColumnType("timestamp with time zone");
@@ -188,9 +210,6 @@ namespace Nodus.Api.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("Email")
-                        .IsUnique();
-
-                    b.HasIndex("Nickname")
                         .IsUnique();
 
                     b.ToTable("Users");

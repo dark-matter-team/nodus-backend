@@ -9,6 +9,9 @@ namespace Nodus.Api.Services;
 
 public class CatalogService(AppDbContext dbContext)
 {
+    public const int DefaultPageSize = 50;
+    public const int MaxPageSize = 100;
+
     public async Task<PublicRoadmapSummaryDto> PublishRoadmapAsync(
         Guid roadmapId,
         Guid userId,
@@ -21,6 +24,8 @@ public class CatalogService(AppDbContext dbContext)
 
         if (string.IsNullOrWhiteSpace(request.Title))
             throw new ValidationException("Title cannot be empty");
+        if (request.Title.Trim().Length > FieldLimits.Title)
+            throw new ValidationException($"Title cannot exceed {FieldLimits.Title} characters");
 
         var nodesCount = await dbContext.RoadmapNodes.CountAsync(n => n.RoadmapId == roadmapId);
         if (nodesCount == 0)
@@ -56,8 +61,15 @@ public class CatalogService(AppDbContext dbContext)
     public async Task<List<PublicRoadmapSummaryDto>> GetPublicRoadmapsAsync(
         string? search,
         string? tag,
-        KnowledgeLevel? level)
+        KnowledgeLevel? level,
+        int page = 1,
+        int pageSize = DefaultPageSize)
     {
+        if (page < 1)
+            throw new ValidationException("Page must be 1 or greater");
+        if (pageSize < 1 || pageSize > MaxPageSize)
+            throw new ValidationException($"Page size must be between 1 and {MaxPageSize}");
+
         var query = dbContext.Roadmaps
             .AsNoTracking()
             .Where(r => r.IsPublic);
@@ -84,6 +96,8 @@ public class CatalogService(AppDbContext dbContext)
         return await query
             .OrderByDescending(r => r.ClonesCount)
             .ThenByDescending(r => r.CreatedAt)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
             .Select(r => new PublicRoadmapSummaryDto(
                 r.Id,
                 r.Title,
