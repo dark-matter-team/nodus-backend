@@ -1,5 +1,5 @@
 using Nodus.Api.DTOs;
-using Nodus.Api.Entities;
+using Nodus.Domain.Entities;
 
 namespace Nodus.Api.Services;
 

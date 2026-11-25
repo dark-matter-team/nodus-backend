@@ -1,4 +1,4 @@
-using Nodus.Api.Enums;
+using Nodus.Domain.Enums;
 
 namespace Nodus.Api.DTOs;
 

@@ -9,7 +9,7 @@ using Microsoft.IdentityModel.JsonWebTokens;
 using Microsoft.IdentityModel.Tokens;
 using Nodus.Api.Data;
 using Nodus.Api.DTOs;
-using Nodus.Api.Entities;
+using Nodus.Domain.Entities;
 using Nodus.Api.Exceptions;
 using Nodus.Api.Middleware;
 using Npgsql;

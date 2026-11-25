@@ -1,7 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Nodus.Api.DTOs;
-using Nodus.Api.Enums;
+using Nodus.Domain.Enums;
 using Nodus.Api.Extensions;
 using Nodus.Api.Services;
 

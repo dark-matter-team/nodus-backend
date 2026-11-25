@@ -1,8 +1,9 @@
 using Microsoft.EntityFrameworkCore;
 using Nodus.Api.Data;
 using Nodus.Api.DTOs;
-using Nodus.Api.Entities;
-using Nodus.Api.Enums;
+using Nodus.Domain;
+using Nodus.Domain.Entities;
+using Nodus.Domain.Enums;
 using Nodus.Api.Exceptions;
 
 namespace Nodus.Api.Services;

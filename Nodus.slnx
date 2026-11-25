@@ -3,4 +3,7 @@
   <Project Path="Nodus.Api/Nodus.Api.csproj" />
   <Project Path="Nodus.Agent.Tests/Nodus.Agent.Tests.csproj" />
   <Project Path="Nodus.Agent/Nodus.Agent.csproj" />
+  <Project Path="Nodus.Application/Nodus.Application.csproj" />
+  <Project Path="Nodus.Domain/Nodus.Domain.csproj" />
+  <Project Path="Nodus.Infrastructure/Nodus.Infrastructure.csproj" />
 </Solution>

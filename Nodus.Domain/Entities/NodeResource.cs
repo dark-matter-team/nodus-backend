@@ -1,4 +1,4 @@
-namespace Nodus.Api.Entities;
+namespace Nodus.Domain.Entities;
 
 /// <summary>
 /// A learning material link suggested by the AI for a node. Stored as JSON inside the node row (jsonb).
