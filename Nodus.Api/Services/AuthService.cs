@@ -98,7 +98,10 @@ public class AuthService(
         {
             payload = await GoogleJsonWebSignature.ValidateAsync(idToken, settings);
         }
-        catch (InvalidJwtException)
+        catch (Exception ex) when (ex is InvalidJwtException
+                                       or FormatException
+                                       or ArgumentException
+                                       or Newtonsoft.Json.JsonException)
         {
             throw new UnauthorizedException("Invalid Google token");
         }
