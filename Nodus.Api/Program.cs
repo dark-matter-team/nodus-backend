@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi;
+using Nodus.Agent;
 using Nodus.Api.Data;
 using Nodus.Api.Middleware;
 using Nodus.Api.Services;
@@ -65,7 +66,11 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             ValidateIssuerSigningKey = true,
             IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSettings.Secret))
         };
+        options.Events = new JwtBearerEvents { OnTokenValidated = TokenVersionValidation.ValidateAsync };
     });
+
+builder.Services.AddRoadmapAgent(builder.Configuration);
+builder.Services.AddGenerateRateLimiter(builder.Configuration);
 
 builder.Services.AddScoped<IEmailService, MailKitEmailService>();
 builder.Services.AddScoped<AuthService>();
@@ -83,6 +88,7 @@ app.UseSwaggerUI();
 app.UseCors("AllowAll");
 app.UseAuthentication();
 app.UseAuthorization();
+app.UseRateLimiter();
 app.MapControllers();
 
 app.Run();

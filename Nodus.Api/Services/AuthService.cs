@@ -1,4 +1,4 @@
-﻿using System.Net.Mail;
+using System.Net.Mail;
 using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
@@ -11,6 +11,7 @@ using Nodus.Api.Data;
 using Nodus.Api.DTOs;
 using Nodus.Api.Entities;
 using Nodus.Api.Exceptions;
+using Nodus.Api.Middleware;
 using Npgsql;
 
 namespace Nodus.Api.Services;
@@ -207,6 +208,7 @@ public class AuthService(
         user.PasswordResetCode = null;
         user.PasswordResetCodeExpiresAt = null;
         user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(newPassword);
+        user.TokenVersion++; // sign out every device that used the old password
 
         await dbContext.SaveChangesAsync();
     }
@@ -292,7 +294,8 @@ public class AuthService(
             [
                 new Claim(JwtRegisteredClaimNames.Sub, user.Id.ToString()),
                 new Claim(JwtRegisteredClaimNames.Email, user.Email),
-                new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
+                new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
+                new Claim(TokenVersionValidation.ClaimType, user.TokenVersion.ToString())
             ]),
             Issuer = _jwt.Issuer,
             Audience = _jwt.Audience,

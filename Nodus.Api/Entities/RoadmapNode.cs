@@ -21,4 +21,5 @@ public class RoadmapNode
     public double PositionY { get; set; }
     public DateTime? CompletedAt { get; set; }
     public List<NodeChecklistItem> ChecklistItems { get; set; } = new();
+    public List<NodeResource> Resources { get; set; } = new();
 }

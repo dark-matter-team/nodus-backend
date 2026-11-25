@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Diagnostics;
+using Microsoft.AspNetCore.Diagnostics;
 using Nodus.Api.Exceptions;
 
 namespace Nodus.Api.Middleware;
@@ -19,6 +19,7 @@ public sealed class GlobalExceptionHandler(
             ForbiddenException ex => (StatusCodes.Status403Forbidden, ex.Message),
             NotFoundException ex => (StatusCodes.Status404NotFound, ex.Message),
             ConflictException ex => (StatusCodes.Status409Conflict, ex.Message),
+            ServiceUnavailableException ex => (StatusCodes.Status503ServiceUnavailable, ex.Message),
             _ => (
                 StatusCodes.Status500InternalServerError,
                 environment.IsDevelopment() ? exception.Message : "An unexpected error occurred."

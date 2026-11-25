@@ -12,4 +12,7 @@ public class User
     public List<Roadmap> Roadmaps { get; set; } = new();
     public string? PasswordResetCode { get; set; }
     public DateTime? PasswordResetCodeExpiresAt { get; set; }
+
+    /// <summary>Put into every JWT; incremented to invalidate all previously issued tokens.</summary>
+    public int TokenVersion { get; set; }
 }

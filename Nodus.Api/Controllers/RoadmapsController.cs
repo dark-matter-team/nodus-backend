@@ -1,5 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
+using Nodus.Api.Middleware;
 using Nodus.Api.DTOs;
 using Nodus.Api.Extensions;
 using Nodus.Api.Services;
@@ -11,10 +13,12 @@ namespace Nodus.Api.Controllers;
 [Authorize]
 public class RoadmapsController(RoadmapService roadmapService) : ControllerBase
 {
+    // Generation calls the AI (30-90 s, free-tier quota), so it is rate-limited per user.
     [HttpPost("generate")]
+    [EnableRateLimiting(RateLimitPolicies.Generate)]
     public async Task<ActionResult<RoadmapFullDto>> GenerateRoadmap([FromBody] GenerateRoadmapRequest request)
     {
-        return Ok(await roadmapService.GenerateAndSaveTreeAsync(User.GetUserId(), request));
+        return Ok(await roadmapService.GenerateAndSaveTreeAsync(User.GetUserId(), request, HttpContext.RequestAborted));
     }
 
     [HttpGet]

@@ -41,7 +41,15 @@ public record NodeDto(
     NodeStatus Status,
     double PositionX,
     double PositionY,
-    List<ChecklistItemDto> Checklist
+    List<ChecklistItemDto> Checklist,
+    List<NodeResourceDto> Resources
+);
+
+public record NodeResourceDto(
+    string Title,
+    string Url,
+    string Type,
+    bool IsFree
 );
 
 public record CompleteNodeResponse(

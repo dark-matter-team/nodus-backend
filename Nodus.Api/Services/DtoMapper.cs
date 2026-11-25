@@ -18,6 +18,9 @@ internal static class DtoMapper
         node.ChecklistItems
             .OrderBy(c => c.SortOrder)
             .Select(c => c.ToDto())
+            .ToList(),
+        (node.Resources ?? [])
+            .Select(r => new NodeResourceDto(r.Title, r.Url, r.Type, r.IsFree))
             .ToList());
 
     public static ChecklistItemDto ToDto(this NodeChecklistItem item) =>
@@ -29,5 +32,6 @@ internal static class DtoMapper
         roadmap.Status,
         roadmap.IsPublic,
         roadmap.Tags,
-        roadmap.Nodes.Select(n => n.ToDto()).ToList());
+        roadmap.Nodes.Select(n => n.ToDto()).ToList(),
+        roadmap.Description);
 }
