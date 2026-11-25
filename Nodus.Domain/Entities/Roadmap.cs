@@ -1,6 +1,6 @@
-using Nodus.Api.Enums;
+using Nodus.Domain.Enums;
 
-namespace Nodus.Api.Entities;
+namespace Nodus.Domain.Entities;
 
 public class Roadmap
 {

@@ -1,5 +1,5 @@
 using Nodus.Api.DTOs;
-using Nodus.Api.Enums;
+using Nodus.Domain.Enums;
 using Nodus.Api.Services;
 using AgentModels = Nodus.Agent.Models;
 

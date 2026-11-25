@@ -1,4 +1,4 @@
-namespace Nodus.Api.Entities;
+namespace Nodus.Domain.Entities;
 
 public class NodeChecklistItem
 {

@@ -1,4 +1,4 @@
-namespace Nodus.Api.Data;
+namespace Nodus.Domain;
 
 /// <summary>
 /// Column length limits shared by the EF model (database constraints) and service validation.

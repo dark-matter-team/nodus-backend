@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
-using Nodus.Api.Entities;
+using Nodus.Domain;
+using Nodus.Domain.Entities;
 
 namespace Nodus.Api.Data;
 

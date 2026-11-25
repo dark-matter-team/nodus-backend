@@ -1,8 +1,8 @@
 using System.Text.RegularExpressions;
-using Nodus.Api.Data;
 using Nodus.Api.DTOs;
-using Nodus.Api.Entities;
-using Nodus.Api.Enums;
+using Nodus.Domain;
+using Nodus.Domain.Entities;
+using Nodus.Domain.Enums;
 using AgentModels = Nodus.Agent.Models;
 
 namespace Nodus.Api.Services;

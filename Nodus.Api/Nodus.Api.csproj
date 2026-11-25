@@ -23,6 +23,8 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Nodus.Agent\Nodus.Agent.csproj" />
+    <ProjectReference Include="..\Nodus.Application\Nodus.Application.csproj" />
+    <ProjectReference Include="..\Nodus.Infrastructure\Nodus.Infrastructure.csproj" />
   </ItemGroup>
 
 </Project>
