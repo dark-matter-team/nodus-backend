@@ -1,3 +1,6 @@
 <Solution>
+  <Project Path="Nodus.Api.Tests/Nodus.Api.Tests.csproj" />
   <Project Path="Nodus.Api/Nodus.Api.csproj" />
+  <Project Path="Nodus.Agent.Tests/Nodus.Agent.Tests.csproj" />
+  <Project Path="Nodus.Agent/Nodus.Agent.csproj" />
 </Solution>

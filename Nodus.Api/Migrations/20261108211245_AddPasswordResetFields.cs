@@ -11,17 +11,10 @@ namespace Nodus.Api.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.AddColumn<string>(
-                name: "PasswordResetCode",
-                table: "Users",
-                type: "text",
-                nullable: true);
-
-            migrationBuilder.AddColumn<DateTime>(
-                name: "PasswordResetCodeExpiresAt",
-                table: "Users",
-                type: "timestamp with time zone",
-                nullable: true);
+            // IF NOT EXISTS: some local databases already got these columns from a removed duplicate
+            // migration (20261110122105_AddPasswordResetFields). The result is the same on a fresh database.
+            migrationBuilder.Sql("ALTER TABLE \"Users\" ADD COLUMN IF NOT EXISTS \"PasswordResetCode\" text NULL;");
+            migrationBuilder.Sql("ALTER TABLE \"Users\" ADD COLUMN IF NOT EXISTS \"PasswordResetCodeExpiresAt\" timestamp with time zone NULL;");
         }
 
         /// <inheritdoc />

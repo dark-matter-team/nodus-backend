@@ -24,9 +24,11 @@ public class CatalogController(CatalogService catalogService) : ControllerBase
     public async Task<ActionResult<List<PublicRoadmapSummaryDto>>> GetPublicRoadmaps(
         [FromQuery] string? search,
         [FromQuery] string? tag,
-        [FromQuery] KnowledgeLevel? level)
+        [FromQuery] KnowledgeLevel? level,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = CatalogService.DefaultPageSize)
     {
-        var list = await catalogService.GetPublicRoadmapsAsync(search, tag, level);
+        var list = await catalogService.GetPublicRoadmapsAsync(search, tag, level, page, pageSize);
         return Ok(list);
     }
 

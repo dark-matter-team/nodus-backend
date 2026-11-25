@@ -27,5 +27,6 @@ public record RoadmapFullDto(
     RoadmapStatus Status,
     bool IsPublic,
     List<string> Tags,
-    List<NodeDto> Nodes
+    List<NodeDto> Nodes,
+    string? Description
 );
